@@ -5,6 +5,7 @@ const cards = $("#stationCards");
 const warningsList = $("#warningsList");
 const signal = $("#overallSignal");
 const thresholds = $("#thresholds");
+const isStaticPage = location.hostname.endsWith("github.io");
 
 function fmtDate(value) {
   if (!value) return "No timestamp";
@@ -157,6 +158,11 @@ function renderChart() {
 
 function renderAdmin() {
   if (!snapshot?.config) return;
+  const adminSection = document.querySelector(".admin");
+  if (isStaticPage && adminSection) {
+    adminSection.hidden = true;
+    return;
+  }
   $("#adminEmail").value = snapshot.config.adminEmail || "";
   $("#recipients").value = (snapshot.config.recipients || []).join("\n");
   thresholds.innerHTML = stationArray().map(station => `
@@ -172,13 +178,27 @@ function renderAdmin() {
 }
 
 async function load() {
-  const res = await fetch("/api/snapshot");
-  snapshot = await res.json();
+  snapshot = await fetchSnapshot();
   renderSignal();
   renderCards();
   renderWarnings();
   renderChart();
   renderAdmin();
+}
+
+async function fetchSnapshot() {
+  const sources = isStaticPage ? ["./data/snapshot.json"] : ["/api/snapshot", "./data/snapshot.json"];
+  let lastError = null;
+  for (const source of sources) {
+    try {
+      const res = await fetch(`${source}?t=${Date.now()}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`${source} returned ${res.status}`);
+      return await res.json();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error("No River Watch data source responded");
 }
 
 function adminHeaders() {

@@ -11,6 +11,7 @@ const DATA_DIR = path.join(ROOT, "data");
 const PUBLIC_DIR = path.join(ROOT, "public");
 const CONFIG_FILE = path.join(DATA_DIR, "config.json");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
+const SNAPSHOT_FILE = path.join(PUBLIC_DIR, "data", "snapshot.json");
 const DHM_BASE = "https://dhm.gov.np";
 
 const MIME = {
@@ -49,6 +50,24 @@ async function readJson(file, fallback) {
 async function writeJson(file, value) {
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, JSON.stringify(value, null, 2));
+}
+
+function publicConfig(config) {
+  return {
+    adminEmail: config.adminEmail,
+    pollMinutes: config.pollMinutes,
+    recipients: config.recipients || []
+  };
+}
+
+async function publishSnapshot(config, state) {
+  await writeJson(SNAPSHOT_FILE, {
+    config: publicConfig(config),
+    lastPoll: state.lastPoll,
+    pollError: state.pollError,
+    stations: state.stations || {},
+    alerts: (state.alerts || []).slice(0, 25)
+  });
 }
 
 function request(url, options = {}, body = null) {
@@ -211,6 +230,7 @@ async function pollAll({ sendAlerts = true } = {}) {
 
   if (sendAlerts) await maybeSendAlerts(config, state);
   await writeJson(STATE_FILE, state);
+  await publishSnapshot(config, state);
   return state;
 }
 
@@ -331,7 +351,7 @@ async function handleApi(req, res, url) {
   if (url.pathname === "/api/snapshot" && req.method === "GET") {
     const [config, state] = await Promise.all([readJson(CONFIG_FILE, {}), readJson(STATE_FILE, {})]);
     return json(res, 200, {
-      config: { adminEmail: config.adminEmail, pollMinutes: config.pollMinutes, recipients: config.recipients },
+      config: publicConfig(config),
       ...state
     });
   }
@@ -354,6 +374,8 @@ async function handleApi(req, res, url) {
       })) : current.stations
     };
     await writeJson(CONFIG_FILE, next);
+    const state = await readJson(STATE_FILE, {});
+    await publishSnapshot(next, state);
     return json(res, 200, next);
   }
 
