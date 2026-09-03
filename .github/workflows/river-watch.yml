@@ -24,11 +24,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     env:
-      ADMIN_EMAIL: bridge4er@gmail.com
+      ADMIN_EMAIL: riverwatch2083@gmail.com
       ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: 465
-      SMTP_USER: bridge4er@gmail.com
+      SMTP_USER: riverwatch2083@gmail.com
       SMTP_PASS: ${{ secrets.SMTP_PASS }}
     steps:
       - name: Checkout
