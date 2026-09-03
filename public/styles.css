@@ -153,7 +153,7 @@ main {
   background: linear-gradient(90deg, var(--water), var(--gold), var(--danger));
 }
 
-.chart-band, .warnings, .admin {
+.chart-band, .warnings, .subscribe, .admin {
   margin-top: 24px;
   padding: 22px;
   border-top: 1px solid var(--line);
@@ -268,8 +268,37 @@ input, textarea {
   font-size: 14px;
 }
 
+.inline-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(160px, .8fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.inline-form p {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.emergency {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.success {
+  color: var(--reed) !important;
+}
+
+.error {
+  color: var(--danger) !important;
+}
+
 @media (max-width: 900px) {
-  .masthead, .summary-grid, .admin-grid, .thresholds {
+  .masthead, .summary-grid, .admin-grid, .thresholds, .inline-form {
     grid-template-columns: 1fr;
   }
 

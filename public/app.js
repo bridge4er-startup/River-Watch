@@ -1,4 +1,5 @@
 let snapshot = null;
+let adminConfigLoaded = false;
 
 const $ = selector => document.querySelector(selector);
 const cards = $("#stationCards");
@@ -6,6 +7,27 @@ const warningsList = $("#warningsList");
 const signal = $("#overallSignal");
 const thresholds = $("#thresholds");
 const isStaticPage = location.hostname.endsWith("github.io");
+
+function apiBase() {
+  const configured = window.RIVER_WATCH_API_BASE || snapshot?.config?.apiBase || "";
+  if (configured) return configured.replace(/\/$/, "");
+  return isStaticPage ? "" : location.origin;
+}
+
+function apiUrl(path) {
+  const base = apiBase();
+  return base ? `${base}${path}` : path;
+}
+
+function hasApi() {
+  return Boolean(apiBase());
+}
+
+function showMessage(selector, message, tone = "") {
+  const el = $(selector);
+  el.textContent = message;
+  el.className = tone;
+}
 
 function fmtDate(value) {
   if (!value) return "No timestamp";
@@ -158,13 +180,8 @@ function renderChart() {
 
 function renderAdmin() {
   if (!snapshot?.config) return;
-  const adminSection = document.querySelector(".admin");
-  if (isStaticPage && adminSection) {
-    adminSection.hidden = true;
-    return;
-  }
   $("#adminEmail").value = snapshot.config.adminEmail || "";
-  $("#recipients").value = (snapshot.config.recipients || []).join("\n");
+  if (!adminConfigLoaded) $("#recipients").value = "";
   thresholds.innerHTML = stationArray().map(station => `
     <div class="threshold-card" data-station="${station.stationNumber}">
       <strong>${station.name}</strong>
@@ -175,6 +192,10 @@ function renderAdmin() {
       </div>
     </div>
   `).join("");
+  if (!hasApi()) {
+    showMessage("#adminMessage", "Admin actions need a backend API URL configured before they can save or send email.");
+    showMessage("#subscribeMessage", "Email signup needs a backend API URL configured before it can save addresses.");
+  }
 }
 
 async function load() {
@@ -187,7 +208,7 @@ async function load() {
 }
 
 async function fetchSnapshot() {
-  const sources = isStaticPage ? ["./data/snapshot.json"] : ["/api/snapshot", "./data/snapshot.json"];
+  const sources = hasApi() ? [apiUrl("/api/snapshot"), "./data/snapshot.json"] : ["./data/snapshot.json"];
   let lastError = null;
   for (const source of sources) {
     try {
@@ -208,6 +229,37 @@ function adminHeaders() {
   };
 }
 
+async function fetchJson(path, options = {}) {
+  if (!hasApi()) throw new Error("Backend API is not configured for this static page.");
+  const res = await fetch(apiUrl(path), {
+    ...options,
+    headers: {
+      ...(options.headers || {})
+    }
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed with ${res.status}`);
+  return data;
+}
+
+async function subscribe(event) {
+  event.preventDefault();
+  const email = $("#subscriberEmail").value.trim();
+  showMessage("#subscribeMessage", "Saving email...");
+  try {
+    await fetchJson("/api/subscribe", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email })
+    });
+    $("#subscriberEmail").value = "";
+    showMessage("#subscribeMessage", "Email saved for River Watch alerts.", "success");
+    await load();
+  } catch (error) {
+    showMessage("#subscribeMessage", error.message, "error");
+  }
+}
+
 async function saveConfig() {
   const stations = stationArray().map(station => {
     const card = thresholds.querySelector(`[data-station="${station.stationNumber}"]`);
@@ -219,27 +271,82 @@ async function saveConfig() {
   });
   const payload = {
     adminEmail: $("#adminEmail").value,
-    recipients: $("#recipients").value.split(/\s+/).map(value => value.trim()).filter(Boolean),
     stations
   };
-  const res = await fetch("/api/admin/config", {
-    method: "PUT",
-    headers: adminHeaders(),
-    body: JSON.stringify(payload)
-  });
-  $("#adminMessage").textContent = res.ok ? "Settings saved." : "Admin token rejected.";
-  if (res.ok) await load();
+  if (adminConfigLoaded || $("#recipients").value.trim()) {
+    payload.recipients = $("#recipients").value.split(/\s+/).map(value => value.trim()).filter(Boolean);
+  }
+  showMessage("#adminMessage", "Saving settings...");
+  try {
+    await fetchJson("/api/admin/config", {
+      method: "PUT",
+      headers: adminHeaders(),
+      body: JSON.stringify(payload)
+    });
+    showMessage("#adminMessage", "Settings saved.", "success");
+    await load();
+  } catch (error) {
+    showMessage("#adminMessage", error.message, "error");
+  }
+}
+
+async function loadAdminConfig() {
+  showMessage("#adminMessage", "Loading private admin settings...");
+  try {
+    const config = await fetchJson("/api/admin/config", {
+      method: "GET",
+      headers: adminHeaders()
+    });
+    adminConfigLoaded = true;
+    $("#adminEmail").value = config.adminEmail || "";
+    $("#recipients").value = (config.recipients || []).join("\n");
+    if (Array.isArray(config.stations)) {
+      for (const station of config.stations) {
+        const card = thresholds.querySelector(`[data-station="${station.stationNumber}"]`);
+        if (!card) continue;
+        card.querySelector(".warning-input").value = station.warningLevel ?? "";
+        card.querySelector(".danger-input").value = station.dangerLevel ?? "";
+      }
+    }
+    showMessage("#adminMessage", "Admin settings loaded.", "success");
+  } catch (error) {
+    showMessage("#adminMessage", error.message, "error");
+  }
 }
 
 async function pollNow() {
-  const res = await fetch("/api/admin/poll", { method: "POST", headers: adminHeaders() });
-  $("#adminMessage").textContent = res.ok ? "DHM poll complete." : "Admin token rejected.";
-  if (res.ok) await load();
+  showMessage("#adminMessage", "Polling DHM...");
+  try {
+    await fetchJson("/api/admin/poll", { method: "POST", headers: adminHeaders() });
+    showMessage("#adminMessage", "DHM poll complete.", "success");
+    await load();
+  } catch (error) {
+    showMessage("#adminMessage", error.message, "error");
+  }
+}
+
+async function sendEmergency() {
+  const message = $("#emergencyMessage").value.trim();
+  showMessage("#emergencyStatus", "Sending emergency email...");
+  try {
+    const result = await fetchJson("/api/admin/emergency", {
+      method: "POST",
+      headers: adminHeaders(),
+      body: JSON.stringify({ message })
+    });
+    $("#emergencyMessage").value = "";
+    showMessage("#emergencyStatus", `Emergency email sent to ${result.count} recipient(s).`, "success");
+  } catch (error) {
+    showMessage("#emergencyStatus", error.message, "error");
+  }
 }
 
 $("#refreshBtn").addEventListener("click", load);
+$("#subscribeForm").addEventListener("submit", subscribe);
+$("#loadAdminConfig").addEventListener("click", loadAdminConfig);
 $("#saveConfig").addEventListener("click", saveConfig);
 $("#pollNow").addEventListener("click", pollNow);
+$("#sendEmergency").addEventListener("click", sendEmergency);
 
 load().catch(error => {
   cards.innerHTML = `<article class="station-card"><h3>Unable to load River Watch</h3><p class="meta">${error.message}</p></article>`;

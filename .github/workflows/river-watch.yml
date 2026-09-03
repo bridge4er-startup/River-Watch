@@ -26,6 +26,7 @@ jobs:
     env:
       ADMIN_EMAIL: riverwatch2083@gmail.com
       ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
+      PUBLIC_API_BASE: ${{ vars.PUBLIC_API_BASE }}
       SMTP_HOST: smtp.gmail.com
       SMTP_PORT: 465
       SMTP_USER: riverwatch2083@gmail.com

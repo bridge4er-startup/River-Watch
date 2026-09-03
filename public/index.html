@@ -46,6 +46,20 @@
       <div id="warningsList" class="warning-list"></div>
     </section>
 
+    <section class="subscribe">
+      <div class="section-title">
+        <div>
+          <p class="eyebrow">Email notifications</p>
+          <h2>Receive River Watch alerts</h2>
+        </div>
+      </div>
+      <form id="subscribeForm" class="inline-form">
+        <label>Email address <input id="subscriberEmail" type="email" autocomplete="email" required></label>
+        <button type="submit">Add email</button>
+        <p id="subscribeMessage"></p>
+      </form>
+    </section>
+
     <section class="admin">
       <div class="section-title">
         <div>
@@ -60,9 +74,17 @@
       </div>
       <div id="thresholds" class="thresholds"></div>
       <div class="actions">
+        <button id="loadAdminConfig">Load admin settings</button>
         <button id="saveConfig">Save admin settings</button>
         <button id="pollNow">Poll DHM now</button>
         <p id="adminMessage"></p>
+      </div>
+      <div class="emergency">
+        <label class="wide">Emergency message <textarea id="emergencyMessage" rows="4" placeholder="Immediate alert message for all saved emails"></textarea></label>
+        <div class="actions">
+          <button id="sendEmergency">Send emergency email to all</button>
+          <p id="emergencyStatus"></p>
+        </div>
       </div>
     </section>
   </main>

@@ -56,7 +56,7 @@ function publicConfig(config) {
   return {
     adminEmail: config.adminEmail,
     pollMinutes: config.pollMinutes,
-    recipients: config.recipients || []
+    apiBase: env("PUBLIC_API_BASE")
   };
 }
 
@@ -139,6 +139,12 @@ function thresholdNumber(value) {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function normalizeEmail(value) {
+  const email = String(value || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "";
+  return email;
 }
 
 function classifyStation(station) {
@@ -235,7 +241,7 @@ async function pollAll({ sendAlerts = true } = {}) {
 }
 
 async function maybeSendAlerts(config, state) {
-  const recipients = [...new Set([...(config.recipients || []), config.adminEmail].filter(Boolean))];
+  const recipients = alertRecipients(config);
   if (!recipients.length) return;
 
   for (const station of Object.values(state.stations || {})) {
@@ -266,6 +272,29 @@ async function maybeSendAlerts(config, state) {
     state.alerts.unshift({ key, sent, error, stationNumber: station.stationNumber, level: station.alertLevel, createdAt: new Date().toISOString() });
     state.alerts = state.alerts.slice(0, 100);
   }
+}
+
+function alertRecipients(config) {
+  return [...new Set([...(config.recipients || []), config.adminEmail].map(normalizeEmail).filter(Boolean))];
+}
+
+async function sendEmergency(config, message) {
+  const recipients = alertRecipients(config);
+  if (!recipients.length) throw new Error("No alert recipients are saved yet");
+  const text = [
+    "River Watch emergency notice",
+    "",
+    message || "Emergency alert issued by River Watch admin.",
+    "",
+    `Sent: ${new Date().toISOString()}`
+  ].join("\n");
+  await sendEmail({
+    to: recipients,
+    subject: "[River Watch EMERGENCY] Immediate notice",
+    text,
+    from: config.adminEmail || env("SMTP_USER")
+  });
+  return recipients.length;
 }
 
 function smtpRead(socket) {
@@ -333,8 +362,16 @@ async function sendEmail({ to, subject, text, from }) {
 }
 
 function json(res, status, data) {
-  res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
+  res.writeHead(status, { "content-type": "application/json; charset=utf-8", ...corsHeaders() });
   res.end(JSON.stringify(data));
+}
+
+function corsHeaders() {
+  return {
+    "access-control-allow-origin": env("CORS_ORIGIN", "*"),
+    "access-control-allow-methods": "GET, POST, PUT, OPTIONS",
+    "access-control-allow-headers": "content-type, x-admin-token"
+  };
 }
 
 async function bodyJson(req) {
@@ -348,12 +385,30 @@ function isAdmin(req) {
 }
 
 async function handleApi(req, res, url) {
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, corsHeaders());
+    return res.end();
+  }
+
   if (url.pathname === "/api/snapshot" && req.method === "GET") {
     const [config, state] = await Promise.all([readJson(CONFIG_FILE, {}), readJson(STATE_FILE, {})]);
     return json(res, 200, {
       config: publicConfig(config),
       ...state
     });
+  }
+
+  if (url.pathname === "/api/subscribe" && req.method === "POST") {
+    const incoming = await bodyJson(req);
+    const email = normalizeEmail(incoming.email);
+    if (!email) return json(res, 400, { error: "Enter a valid email address" });
+    const config = await readJson(CONFIG_FILE, {});
+    const recipients = [...new Set([...(config.recipients || []).map(normalizeEmail), email].filter(Boolean))];
+    const next = { ...config, recipients };
+    await writeJson(CONFIG_FILE, next);
+    const state = await readJson(STATE_FILE, {});
+    await publishSnapshot(next, state);
+    return json(res, 200, { ok: true, count: recipients.length });
   }
 
   if (url.pathname === "/api/admin/config" && req.method === "PUT") {
@@ -363,7 +418,7 @@ async function handleApi(req, res, url) {
     const next = {
       ...current,
       adminEmail: incoming.adminEmail || current.adminEmail,
-      recipients: Array.isArray(incoming.recipients) ? incoming.recipients.filter(Boolean) : current.recipients,
+      recipients: Array.isArray(incoming.recipients) ? [...new Set(incoming.recipients.map(normalizeEmail).filter(Boolean))] : current.recipients,
       stations: Array.isArray(incoming.stations) ? incoming.stations.map(station => ({
         dhmId: station.dhmId,
         stationNumber: String(station.stationNumber),
@@ -377,6 +432,31 @@ async function handleApi(req, res, url) {
     const state = await readJson(STATE_FILE, {});
     await publishSnapshot(next, state);
     return json(res, 200, next);
+  }
+
+  if (url.pathname === "/api/admin/config" && req.method === "GET") {
+    if (!isAdmin(req)) return json(res, 401, { error: "Admin token required" });
+    const config = await readJson(CONFIG_FILE, {});
+    return json(res, 200, config);
+  }
+
+  if (url.pathname === "/api/admin/emergency" && req.method === "POST") {
+    if (!isAdmin(req)) return json(res, 401, { error: "Admin token required" });
+    const config = await readJson(CONFIG_FILE, {});
+    const incoming = await bodyJson(req);
+    const count = await sendEmergency(config, incoming.message);
+    const state = await readJson(STATE_FILE, { alerts: [] });
+    state.alerts = state.alerts || [];
+    state.alerts.unshift({
+      key: `emergency:${Date.now()}`,
+      sent: true,
+      stationNumber: "all",
+      level: "emergency",
+      createdAt: new Date().toISOString()
+    });
+    await writeJson(STATE_FILE, state);
+    await publishSnapshot(config, state);
+    return json(res, 200, { ok: true, count });
   }
 
   if (url.pathname === "/api/admin/poll" && req.method === "POST") {
