@@ -4,7 +4,7 @@
     "pollMinutes": 10,
     "apiBase": ""
   },
-  "lastPoll": "2026-10-09T21:17:08.161Z",
+  "lastPoll": "2026-10-10T01:01:32.809Z",
   "pollError": null,
   "stations": {
     "265": {
@@ -2830,7 +2830,7 @@
           "value": 3.19400024414
         }
       ],
-      "fetchedAt": "2026-10-09T21:17:05.504Z",
+      "fetchedAt": "2026-10-10T01:01:28.883Z",
       "alertLevel": "normal"
     },
     "267": {
@@ -5656,7 +5656,7 @@
           "value": 2.32299995422
         }
       ],
-      "fetchedAt": "2026-10-09T21:17:06.835Z",
+      "fetchedAt": "2026-10-10T01:01:30.224Z",
       "alertLevel": "normal"
     },
     "268": {
@@ -8482,7 +8482,7 @@
           "value": 2.09999990463
         }
       ],
-      "fetchedAt": "2026-10-09T21:17:08.161Z",
+      "fetchedAt": "2026-10-10T01:01:32.809Z",
       "alertLevel": "normal"
     }
   },
