@@ -4,7 +4,7 @@
     "pollMinutes": 10,
     "apiBase": ""
   },
-  "lastPoll": "2026-10-22T20:49:10.017Z",
+  "lastPoll": "2026-10-22T23:44:13.571Z",
   "pollError": "Thulo Bheri at Rimna: Timeout fetching https://dhm.gov.np/hydrology/hms-Single/145; Sano Bheri at Simlighat: Timeout fetching https://dhm.gov.np/hydrology/hms-Single/162; Saru Gad at Jajarkot: Timeout fetching https://dhm.gov.np/hydrology/hms-Single/4791",
   "stations": {
     "265": {
